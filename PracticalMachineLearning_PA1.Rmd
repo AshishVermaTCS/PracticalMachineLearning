@@ -1,0 +1,102 @@
+---
+title: "Practical Machine Learning - Peer Assessment Report"
+author: "Ashish Verma"
+date: "03 June 2017"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+###Brief Requirement    
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, our goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).    
+
+The goal of this analysis is to predict the manner in which they did the exercise. We should create a report describing how we built our model, how we used cross validation, what we think the expected out of sample error is, and why we made the choices we did. 
+
+###Basic Data Preparation and Environment Setup
+```{r cache=TRUE, warning=FALSE,message=FALSE}
+## Set appropriate working where the downloaded training file has been saved
+  setwd("C:\\Users\\Ashish\\Downloads\\")
+
+## Load the necessary dependant packages
+  library(caret)
+  library(randomForest)
+  library(ggplot2)
+  library(Hmisc)
+```
+
+### Data Loading 
+```{r cache=TRUE, warning=FALSE,message=FALSE}
+## Load the data
+  trainingset <- read.csv("pml-training.csv",row.names=1,na.strings = "")
+  testingset <- read.csv("pml-testing.csv",row.names=1,na.strings = "")
+  
+## View Data Dimensions
+  dim(trainingset)
+```
+
+### Basic Data Cleansing  
+In this step we will do 2 types of data cleansing:     
+**a)** Remove those columns which have "near zero variance"     
+**b)** Remove the columns which have missing values    
+
+```{r cache=TRUE, warning=FALSE, message=FALSE}
+# Remove near zero covariates
+  datanzv <- nearZeroVar(trainingset,saveMetrics=TRUE)
+  trainingset <- trainingset[,!datanzv$nzv]
+  testingset <- testingset[,!datanzv$nzv]
+
+# Remove columns with missing values
+  training_filter_missing <- trainingset[,(colSums(is.na(trainingset)) == 0)]
+  testing_filter_missing <- testingset[,(colSums(is.na(testingset)) == 0)]
+```
+
+Now we will distribute the training data in training set and validation set by using "classe" variable
+
+```{r cache=TRUE, warning=FALSE, message=FALSE}
+## Split the data into 70% training and 30% validation records
+  intrain <- createDataPartition(y=trainingset$classe, p=0.7, list=FALSE)
+  final_training <- training_filter_missing[intrain,]
+  final_validation <- training_filter_missing[-intrain,]
+
+## Check dimensions of the cleansed records  
+  dim(final_training)
+  
+## Find correlations among various columns  
+  correlations <- abs(sapply(colnames(final_training[, -ncol(trainingset)]), function(x) cor(as.numeric(final_training[, x]),as.numeric(final_training$classe), method = "spearman")))
+  correlations
+```
+***Inference from above correlation:***    
+There seems to be no predictors which are strongly correlated with the outcome variable, so linear regression model may not be a good option to proceed. Hence, Random forest model will be used further to model.
+
+### Detailed Data Modelling using Random Forest Method
+```{r cache=TRUE, warning=FALSE, message=FALSE}
+## Set desired seed  
+  set.seed(1234)
+## Fit rf model
+  rf_fit_model <- randomForest(classe~.,data=final_training)
+  rf_fit_model
+```
+
+### Model Evalution and Inferencing
+```{r cache=TRUE, warning=FALSE, message=FALSE}
+## Find the impotance on the model
+  importance(rf_fit_model)
+
+## Evaluate using confusion matrix
+  confusionMatrix(predict(rf_fit_model,newdata=final_validation[,-ncol(final_validation)]),final_validation$classe)
+  
+## Check the model accuracy  
+  accuracy<-c(as.numeric(predict(rf_fit_model,newdata=final_validation[,-ncol(final_validation)])==final_validation$classe))
+  accuracy<-sum(accuracy)*100/nrow(final_validation)
+  accuracy
+```
+### The model accuracy is ***~ 99.84%***
+```{r cache=TRUE, warning=FALSE, message=FALSE}
+plot(rf_fit_model)
+```
+
+### Final Prediction     
+This last step will use the above model to predict the outcome "classe" for the provided test sample of data.    
+```{r cache=TRUE, warning=FALSE, message=FALSE, eval=FALSE}
+  predict_testing <- predict(rf_fit_model, newdata=testing_filter_missing[-1,])
+```
